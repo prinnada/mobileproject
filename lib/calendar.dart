@@ -1,19 +1,53 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:table_calendar/table_calendar.dart';
 
-class Calendar extends StatefulWidget {
+
+class HomePage extends StatefulWidget {
   @override
-  _CalendarState createState() => _CalendarState();
+  _HomePageState createState() => _HomePageState();
 }
 
-class _CalendarState extends State<Calendar> {
+class _HomePageState extends State<HomePage> {
   CalendarController _controller;
+  Map<DateTime, List<dynamic>> _events;
+  List<dynamic> _selectedEvents;
+  TextEditingController _eventController;
+  SharedPreferences prefs;
 
   @override
   void initState() {
-    
     super.initState();
     _controller = CalendarController();
+    _eventController = TextEditingController();
+    _events = {};
+    _selectedEvents = [];
+    initPrefs();
+  }
+
+  initPrefs() async {
+    prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _events = Map<DateTime, List<dynamic>>.from(
+          decodeMap(json.decode(prefs.getString("events") ?? "{}")));
+    });
+  }
+
+  Map<String, dynamic> encodeMap(Map<DateTime, dynamic> map) {
+    Map<String, dynamic> newMap = {};
+    map.forEach((key, value) {
+      newMap[key.toString()] = map[key];
+    });
+    return newMap;
+  }
+
+  Map<DateTime, dynamic> decodeMap(Map<String, dynamic> map) {
+    Map<DateTime, dynamic> newMap = {};
+    map.forEach((key, value) {
+      newMap[DateTime.parse(key)] = map[key];
+    });
+    return newMap;
   }
 
   @override
@@ -24,11 +58,11 @@ class _CalendarState extends State<Calendar> {
             onPressed: () {},
             icon: Icon(
               Icons.arrow_back_ios,
-              color: Colors.black,
+              color: Colors.white,
             ))),
         title: Text(
           'Calendar',
-          style: TextStyle(color: Colors.black),
+          style: TextStyle(color: Colors.white),
         ),
         centerTitle: true,
         backgroundColor: Colors.blueAccent,
@@ -38,8 +72,10 @@ class _CalendarState extends State<Calendar> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
             TableCalendar(
+              events: _events,
               initialCalendarFormat: CalendarFormat.week,
               calendarStyle: CalendarStyle(
+                  canEventMarkersOverflow: true,
                   todayColor: Colors.orange,
                   selectedColor: Theme.of(context).primaryColor,
                   todayStyle: TextStyle(
@@ -57,7 +93,9 @@ class _CalendarState extends State<Calendar> {
               ),
               startingDayOfWeek: StartingDayOfWeek.monday,
               onDaySelected: (date, events) {
-                print(date.toIso8601String());
+                setState(() {
+                  _selectedEvents = events;
+                });
               },
               builders: CalendarBuilders(
                 selectedDayBuilder: (context, date, events) => Container(
@@ -82,10 +120,52 @@ class _CalendarState extends State<Calendar> {
                     )),
               ),
               calendarController: _controller,
-            )
+            ),
+            ..._selectedEvents.map((event) => ListTile(
+                  title: Text(event),
+                )),
           ],
         ),
       ),
+      floatingActionButton: FloatingActionButton(
+        child: Icon(Icons.add),
+        onPressed: _showAddDialog,
+      ),
     );
+  }
+
+  _showAddDialog() async {
+    await showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+              content: TextField(
+                controller: _eventController,
+                decoration: const InputDecoration(
+                  hintText: 'Add a note'
+                ),
+              ),
+              actions: <Widget>[
+                FlatButton(
+                  child: Text("Save"),
+                  onPressed: () {
+                    if (_eventController.text.isEmpty) return;
+                    if (_events[_controller.selectedDay] != null) {
+                      _events[_controller.selectedDay]
+                          .add(_eventController.text);
+                    } else {
+                      _events[_controller.selectedDay] = [
+                        _eventController.text
+                      ];
+                    }
+                    prefs.setString("events", json.encode(encodeMap(_events)));
+                    _eventController.clear();
+                    Navigator.pop(context);
+                  },
+                )
+              ],
+            ));
+    setState(() {
+      _selectedEvents = _events[_controller.selectedDay];
+    });
   }
 }
